@@ -1,0 +1,260 @@
+#!/bin/bash
+# ===========================================
+# Stable Stream Solutions - CLI Control Script
+# ===========================================
+# Usage: stable-stream [command]
+#
+# Commands:
+#   start     - Start the service
+#   stop      - Stop the service
+#   restart   - Restart the service
+#   status    - Check service status
+#   configure - Re-run interactive configuration
+#   logs      - View service logs
+#   update    - Update from GitHub
+
+SERVICE_NAME="stable-stream.service"
+CONFIG_FILE="/etc/stable-stream/config.env"
+INSTALL_PATH_FILE="/etc/stable-stream/install_path"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+# Get install path
+get_install_path() {
+    if [ -f "$INSTALL_PATH_FILE" ]; then
+        cat "$INSTALL_PATH_FILE"
+    else
+        echo ""
+    fi
+}
+
+# Commands
+cmd_start() {
+    echo -e "${CYAN}Starting Stable Stream...${NC}"
+    sudo systemctl start "$SERVICE_NAME"
+    sleep 1
+    cmd_status
+}
+
+cmd_stop() {
+    echo -e "${CYAN}Stopping Stable Stream...${NC}"
+    sudo systemctl stop "$SERVICE_NAME"
+    echo -e "${GREEN}✓ Service stopped${NC}"
+}
+
+cmd_restart() {
+    echo -e "${CYAN}Restarting Stable Stream...${NC}"
+    sudo systemctl restart "$SERVICE_NAME"
+    sleep 1
+    cmd_status
+}
+
+cmd_status() {
+    if systemctl is-active --quiet "$SERVICE_NAME"; then
+        echo -e "${GREEN}● Stable Stream is running${NC}"
+        systemctl status "$SERVICE_NAME" --no-pager | head -10
+    else
+        echo -e "${RED}○ Stable Stream is stopped${NC}"
+    fi
+}
+
+cmd_logs() {
+    echo -e "${CYAN}Showing logs (Ctrl+C to exit)...${NC}"
+    journalctl -u "$SERVICE_NAME" -f --no-pager
+}
+
+cmd_configure() {
+    INSTALL_PATH=$(get_install_path)
+    if [ -z "$INSTALL_PATH" ]; then
+        echo -e "${RED}Error: Install path not found. Please reinstall.${NC}"
+        exit 1
+    fi
+    
+    # Stop service during configuration
+    echo -e "${CYAN}Stopping service for configuration...${NC}"
+    sudo systemctl stop "$SERVICE_NAME" 2>/dev/null || true
+    
+    # Source the start.sh to get configuration functions
+    cd "$INSTALL_PATH"
+    
+    # Run the configuration portion
+    echo ""
+    echo "=============================================="
+    echo "  STABLE STREAM CONFIGURATION"
+    echo "=============================================="
+    
+    # Load existing config
+    if [ -f "$CONFIG_FILE" ]; then
+        source "$CONFIG_FILE"
+    fi
+    
+    # Prompt for username
+    read -p "Username [$USERNAME]: " NEW_USERNAME
+    USERNAME="${NEW_USERNAME:-$USERNAME}"
+    
+    # Prompt for password change
+    read -p "Change password? (y/n) [n]: " CHANGE_PW
+    if [ "$CHANGE_PW" = "y" ] || [ "$CHANGE_PW" = "Y" ]; then
+        read -sp "New password: " NEW_PASSWORD
+        echo ""
+        if [ -n "$NEW_PASSWORD" ]; then
+            PASSWORD_HASH=$(python3 -c "import bcrypt; print(bcrypt.hashpw(b'$NEW_PASSWORD', bcrypt.gensalt()).decode())")
+        fi
+    fi
+    
+    # Multistream
+    DEFAULT_MS="n"
+    [ "$MULTISTREAM_ENABLED" = "y" ] && DEFAULT_MS="y"
+    read -p "Enable Multi-Streaming? (y/n) [$DEFAULT_MS]: " MS_INPUT
+    MULTISTREAM_ENABLED="${MS_INPUT:-$DEFAULT_MS}"
+    
+    if [ "$MULTISTREAM_ENABLED" = "y" ]; then
+        read -p "Maximum stream destinations (1-5) [${MAX_MULTISTREAMS:-3}]: " MS_MAX
+        MAX_MULTISTREAMS="${MS_MAX:-${MAX_MULTISTREAMS:-3}}"
+    else
+        MAX_MULTISTREAMS=0
+    fi
+    
+    # Ingest lock
+    DEFAULT_LOCK="n"
+    [ "$INGESTS_LOCKED" = "y" ] && DEFAULT_LOCK="y"
+    read -p "Lock ingest creation? (y/n) [$DEFAULT_LOCK]: " LOCK_INPUT
+    INGESTS_LOCKED="${LOCK_INPUT:-$DEFAULT_LOCK}"
+    
+    # Save configuration
+    sudo tee "$CONFIG_FILE" > /dev/null <<EOF
+USERNAME="$USERNAME"
+PASSWORD_HASH="$PASSWORD_HASH"
+MULTISTREAM_ENABLED="$MULTISTREAM_ENABLED"
+MAX_MULTISTREAMS="$MAX_MULTISTREAMS"
+INGESTS_LOCKED="$INGESTS_LOCKED"
+EOF
+    
+    # Sync to database
+    ENCODED_HASH=$(echo -n "$PASSWORD_HASH" | base64)
+    python3 -c "
+import sqlite3
+import base64
+
+username = '$USERNAME'
+encoded_hash = '$ENCODED_HASH'
+password_hash = base64.b64decode(encoded_hash).decode('utf-8')
+
+conn = sqlite3.connect('$INSTALL_PATH/data.db')
+c = conn.cursor()
+c.execute('CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, username TEXT UNIQUE, password_hash TEXT NOT NULL)')
+c.execute('DELETE FROM users')
+c.execute('INSERT INTO users (username, password_hash) VALUES (?, ?)', (username, password_hash))
+conn.commit()
+conn.close()
+" 2>/dev/null || echo -e "${YELLOW}Warning: Could not sync to database${NC}"
+    
+    echo -e "${GREEN}✓ Configuration saved${NC}"
+    
+    # Restart service
+    echo -e "${CYAN}Starting service...${NC}"
+    sudo systemctl start "$SERVICE_NAME"
+    sleep 1
+    cmd_status
+}
+
+cmd_update() {
+    INSTALL_PATH=$(get_install_path)
+    if [ -z "$INSTALL_PATH" ]; then
+        echo -e "${RED}Error: Install path not found. Please reinstall.${NC}"
+        exit 1
+    fi
+    
+    echo -e "${CYAN}Updating Stable Stream...${NC}"
+    echo ""
+    
+    cd "$INSTALL_PATH"
+    
+    # Check for updates
+    echo "Fetching latest from GitHub..."
+    git fetch origin main
+    
+    LOCAL=$(git rev-parse HEAD)
+    REMOTE=$(git rev-parse origin/main)
+    
+    if [ "$LOCAL" = "$REMOTE" ]; then
+        echo -e "${GREEN}✓ Already up to date${NC}"
+        exit 0
+    fi
+    
+    echo "Updates available. Pulling..."
+    git pull origin main
+    
+    # Stop service
+    echo ""
+    echo "Stopping service..."
+    sudo systemctl stop "$SERVICE_NAME"
+    
+    # Rebuild backend
+    echo "Building backend..."
+    cd backend
+    go mod tidy
+    go build -o ../bin/server main.go
+    cd ..
+    
+    # Rebuild frontend
+    echo "Building frontend..."
+    cd frontend
+    npm install
+    npm run build
+    cd ..
+    
+    # Restart service
+    echo ""
+    echo "Starting service..."
+    sudo systemctl start "$SERVICE_NAME"
+    
+    sleep 2
+    
+    if systemctl is-active --quiet "$SERVICE_NAME"; then
+        echo ""
+        echo -e "${GREEN}✓ Update complete and service restarted${NC}"
+    else
+        echo ""
+        echo -e "${RED}⚠ Update complete but service may have failed to start${NC}"
+        echo "Check logs with: stable-stream logs"
+    fi
+}
+
+cmd_help() {
+    echo "Stable Stream Solutions - CLI Control"
+    echo ""
+    echo "Usage: stable-stream [command]"
+    echo ""
+    echo "Commands:"
+    echo "  start     - Start the service"
+    echo "  stop      - Stop the service"
+    echo "  restart   - Restart the service"
+    echo "  status    - Check service status"
+    echo "  configure - Re-run interactive configuration"
+    echo "  logs      - View service logs"
+    echo "  update    - Update from GitHub"
+    echo "  help      - Show this help message"
+}
+
+# Main
+case "${1:-status}" in
+    start)     cmd_start ;;
+    stop)      cmd_stop ;;
+    restart)   cmd_restart ;;
+    status)    cmd_status ;;
+    configure) cmd_configure ;;
+    logs)      cmd_logs ;;
+    update)    cmd_update ;;
+    help|--help|-h) cmd_help ;;
+    *)
+        echo -e "${RED}Unknown command: $1${NC}"
+        cmd_help
+        exit 1
+        ;;
+esac

@@ -1,0 +1,20 @@
+# golangci-lint configuration
+# https://golangci-lint.run/usage/configuration/
+
+linters:
+  enable:
+    - gosec          # Security scanner
+    - errcheck       # Check for unchecked errors
+    - govet          # Reports suspicious constructs
+    - staticcheck    # Static analysis
+    - ineffassign    # Detects ineffectual assignments
+    - unused         # Finds unused code
+
+linters-settings:
+  gosec:
+    excludes: []
+    severity: medium
+    confidence: medium
+
+run:
+  timeout: 5m

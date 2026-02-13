@@ -1,0 +1,37 @@
+[Unit]
+Description=OBS Studio on Wayland (labwc compositor)
+After=ydotoold.service
+Wants=ydotoold.service
+
+[Service]
+Type=simple
+User=user
+Environment=HOME=/home/user
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+# Use headless backend (no real display required)
+Environment=WLR_BACKENDS=headless
+Environment=WLR_LIBINPUT_NO_DEVICES=1
+# WLR_RENDERER is not set — labwc auto-detects GPU (GLES2) when available.
+# For VMs without GPU passthrough, uncomment the following line:
+# Environment=WLR_RENDERER=pixman
+# NVIDIA-specific environment for OBS hardware encoding
+Environment=__NV_PRIME_RENDER_OFFLOAD=1
+Environment=__GLX_VENDOR_LIBRARY_NAME=nvidia
+Environment=VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json
+# OBS EGL for hardware encoding
+Environment=OBS_USE_EGL=1
+Environment=LIBVA_DRIVER_NAME=nvidia
+# Force display name to avoid conflicts
+Environment=WAYLAND_DISPLAY=wayland-0
+# Ensure XDG_RUNTIME_DIR exists at boot (logind only creates it on login)
+ExecStartPre=/bin/bash -c "mkdir -p /run/user/1000 && chown user:user /run/user/1000 && chmod 700 /run/user/1000"
+# labwc uses -s to specify startup command
+ExecStart=/usr/bin/labwc -s /usr/local/bin/start-obs-session.sh
+Restart=always
+RestartSec=5
+# Graceful shutdown: send SIGTERM to main process, wait for cleanup
+KillMode=mixed
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,39 @@
+# CodeRabbit Configuration
+# https://docs.coderabbit.ai/guides/configure-coderabbit
+
+language: "en-US"
+tone_instructions: "Be thorough and constructive. Focus on security, performance, and best practices."
+
+reviews:
+  profile: "assertive"
+  request_changes_workflow: true
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
+  tools:
+    golangci-lint:
+      enabled: true
+      config_file: ".golangci.yml"
+    eslint:
+      enabled: true
+    shellcheck:
+      enabled: true
+    semgrep:
+      enabled: true
+    gitleaks:
+      enabled: true
+  path_instructions:
+    - path: "backend/**"
+      instructions: "Review Go code for security vulnerabilities, proper error handling, resource leaks, and concurrency issues."
+    - path: "frontend/**"
+      instructions: "Review React/TypeScript code for performance, accessibility, and security (XSS, etc)."
+    - path: "portal/**"
+      instructions: "Review Next.js code for authentication security, API route protection, and SSR patterns."
+    - path: "scripts/**"
+      instructions: "Review shell scripts for security vulnerabilities, proper error handling, and portability."
+    - path: "promo-site/**"
+      instructions: "Review Next.js/React code for SEO, accessibility, performance, API route security, and static/export configuration."
+
+chat:
+  auto_reply: true

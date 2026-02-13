@@ -1,0 +1,40 @@
+# Binaries
+bin/
+# server (binary is in bin/ usually, but if correct, precise ignore)
+/server
+mediamtx
+backend/stable-stream-solutions
+
+# Dependencies
+node_modules/
+backend/vendor/
+
+# Database
+*.db
+*.sqlite
+
+# OS specific
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Environment variables
+.env
+.env.local
+
+# Logs
+logs/
+*.log
+
+# Build output
+dist/
+build/
+frontend/dist/
+frontend/build/
+
+# IDEs
+.vscode/
+.idea/
+
+# Secrets
+*.pem

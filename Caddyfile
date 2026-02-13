@@ -1,0 +1,40 @@
+# Caddy reverse proxy configuration for Stable Stream Solutions
+# Replace YOUR_DOMAIN with your actual domain (e.g., stream.example.com)
+# Caddy automatically provisions Let's Encrypt SSL certificates
+#
+# USAGE:
+#   1. Edit this file: replace {$DOMAIN:localhost} with your domain
+#   2. Copy to: sudo cp Caddyfile /etc/caddy/Caddyfile
+#   3. Start Caddy: sudo systemctl start caddy
+#
+# For local development (no HTTPS), use: http://localhost
+
+{$DOMAIN:localhost} {
+    # Reverse proxy to Go backend
+    reverse_proxy localhost:8080
+
+    # Enable gzip compression
+    encode gzip
+
+    # Security headers
+    header {
+        # Prevent clickjacking
+        X-Frame-Options "SAMEORIGIN"
+        # Prevent MIME type sniffing
+        X-Content-Type-Options "nosniff"
+        # Enable XSS filter
+        X-XSS-Protection "1; mode=block"
+        # HSTS - force HTTPS for 1 year (only active when using HTTPS)
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        # Remove server identification
+        -Server
+    }
+
+    # Logging
+    log {
+        output file /var/log/caddy/access.log {
+            roll_size 10mb
+            roll_keep 5
+        }
+    }
+}

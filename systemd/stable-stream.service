@@ -1,0 +1,19 @@
+[Unit]
+Description=Stable Stream Solutions Server
+After=network.target obs-wayland.service
+Wants=obs-wayland.service
+
+[Service]
+Type=simple
+User=user
+WorkingDirectory=/home/user/stable-stream-solutions
+ExecStart=/home/user/stable-stream-solutions/bin/server
+Restart=on-failure
+RestartSec=5
+Environment=HOME=/home/user
+
+# Load configuration
+EnvironmentFile=/etc/stable-stream/config.env
+
+[Install]
+WantedBy=multi-user.target
