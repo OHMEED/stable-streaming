@@ -66,6 +66,7 @@ The installer will:
 ```
 http://<YOUR_SERVER_IP>:8080
 ```
+- Default Username/Password is admin/admin
 - Update password with stable-stream configure
 ---
 
